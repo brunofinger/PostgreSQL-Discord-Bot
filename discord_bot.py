@@ -1,87 +1,118 @@
 import psycopg2
-import psycopg2.extras
+from psycopg2 import OperationalError
 import discord
+
 from dotenv import dotenv_values
 
-# Load Discord Bot Token from .env file
 token = dotenv_values(".env")["TOKEN"]
-
-# Define database connection details
-DATABASE_CONNECTION = {
-	'host': '',
-	'port':  1,
-	'dbname': '',
-	'user': '',
-	'password': '',
-	'connect_timeout': 10
-}
-
-# Function to create a connection to the PostgreSQL database
-def pgsql_connection():
-    conn = psycopg2.connect(**DATABASE_CONNECTION)
-    conn.autocommit = True  # Set autocommit to True
-    return conn
-
-# Function to create a cursor with dictionary output
-def pgsql_cursor(conn):
-    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-# Function to execute a query and return the result
-def execute_query(query):
-    conn = pgsql_connection()
-    cursor = pgsql_cursor(conn)
-    cursor.execute(query)
-    result = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return result
-
-# Initialize Discord client
 client = discord.Client()
 
-# Event that runs when the bot is ready
+# ? Database
+
+database = dotenv_values(".env")["DB_NAME"]
+user = dotenv_values(".env")["DB_USER"]
+password = dotenv_values(".env")["DB_PASSWORD"]
+host = dotenv_values(".env")["DB_HOST"]
+port = dotenv_values(".env")["DB_PORT"]
+
+def create_connection():
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            database=database,
+            user=user,
+            password=password,
+            host=host,
+            port=port
+        )
+        print("Connection successful")
+    except OperationalError as e:
+        print(f"The error '{e}' occurred")
+    return conn
+
+
+conn = create_connection()
+
+def execute_query(query):
+    if conn is not None:
+        try:
+            output = ""
+            cur = conn.cursor()
+            try:
+                cur.execute(query)
+            except Exception as e:
+                return e
+            info = cur.fetchall()
+            conn.commit()
+            for value in info:
+                output += str(value) + "\n"
+            if output=="":
+                return "No Output / Empty"
+            return output
+        except Exception as e:
+            return e
+    return "Error! the database connection was not created."
+
+
+# ? Discord Bot
+
 @client.event
 async def on_ready():
     print('logged in as {0.user}'.format(client))
-    # Check if the "dmb" role exists in all the guilds the bot is a member of, if not create it
-    for guild in client.guilds:
+    guilds = client.guilds
+    for guild in guilds:
         for role in guild.roles:
-            if role.name.lower() == "dmb":
+            if role.name.lower() == "dmb".lower():
                 break
         else:
             await guild.create_role(name="dmb")
 
-# Event that runs when the bot joins a new guild
 @client.event
 async def on_guild_join(guild):
-    # Check if the "dmb" role exists in the guild, if not create it
     for role in guild.roles:
-        if role.name.lower() == "dmb":
+        if role.name.lower() == "dmb".lower():
             break
     else:
-        await guild.create_role(name="dmb")
+           await guild.create_role(name="dmb")
 
-# Embed message template
-title = 'SQLite Discord Shell'
+title = 'PostgreSQL Discord Shell'
 arg_missing_message = discord.Embed(title=title, description='Arguments are missing')
+blue_color = discord.Color.blue()
+gray_color = discord.Color.light_gray()
+red_color = discord.Color.red()
 
-# Event that runs when the bot receives a message
 @client.event
 async def on_message(message):
-    # Ignore messages from the bot itself
+
     if message.author == client.user:
         return
 
-    # Check if the message starts with "sql>"
     if message.content.startswith('sql>'):
-        # Check if the message is "sql>help", if so, return a help message
-        if message.content == ('sql>help'):
-            await message.channel.send(embed=(discord.Embed(title=title, description=""" For Initialization Help, please read project's readme.md:
-             For More Commands, visit this great cheat sheet:
-             https://d17h27t6h515a5.cloudfront.net/topher/2016/September/57ed880e_sql-sqlite-commands-cheat-sheet/sql-sqlite-commands-cheat-sheet.pdf
-             """, color = discord.Color.blue())))
+        for role in message.author.roles:
+            if role.name == "dmb":
+                break
+        else:
+            await message.channel.send(embed=(discord.Embed(title=title, description="""You are not allowed to use Database Manager Bot without a role called "dmb" """, color=red_color)))
             return
 
-        # Execute the query and return the result
-        query = message.content.replace('sql>', '').strip()  # Extract the query from the message
-        if not query:  # Check if
+    if message.content == ('sql>help'):
+        await message.channel.send(embed=(discord.Embed(title=title, description=""" For Initialization Help, please read project's readme.md:
+         https://github.com/YonLiud/Discord-Database-Bot/blob/master/README.md
+         For More Help, visit PostgreSQL's website:
+         https://www.postgresql.org/docs/
+         To check my project's cool Website, visit alTab Developers:
+         http://www.altab.dev/
+         For More Commands, visit this great cheat sheet:
+         https://www.postgresqltutorial.com/postgresql-cheat-sheet/
+         """, color=blue_color)))
+        return
+
+    if message.content.startswith('sql>'):
+        query = ""
+        for word in message.content.split():
+            query += word + " "
+        query = query.replace('sql>', '')
+        if(query == " "):
+            await message.channel.send(embed=arg_missing_message)
+            return
+        await message.channel.send(embed=(discord.Embed(title=title + " Query Output:",
