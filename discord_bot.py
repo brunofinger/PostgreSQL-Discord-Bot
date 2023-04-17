@@ -97,7 +97,6 @@ async def on_message(message):
 
     if message.content == ('sql>help'):
         await message.channel.send(embed=(discord.Embed(title=title, description=""" For Initialization Help, please read project's readme.md:
-         https://github.com/YonLiud/Discord-Database-Bot/blob/master/README.md
          For More Help, visit PostgreSQL's website:
          https://www.postgresql.org/docs/
          To check my project's cool Website, visit alTab Developers:
